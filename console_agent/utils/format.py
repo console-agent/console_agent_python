@@ -1,6 +1,9 @@
 """
 Console formatting — rich output with colors, icons, and tree structure.
 Uses the 'rich' library for spinners, colors, and structured output.
+
+When verbose=False (default), output is minimal — just the essential info.
+When verbose=True, output includes [AGENT] prefix, tree structure, and full metadata.
 """
 
 from __future__ import annotations
@@ -36,19 +39,24 @@ def _should_log(level: LogLevel) -> bool:
 class SpinnerHandle:
     """Wraps a Rich Live spinner so we can start/stop it."""
 
-    def __init__(self, live: Live, text: str) -> None:
+    def __init__(self, live: Live, text: str, verbose: bool = False) -> None:
         self._live = live
         self._text = text
+        self._verbose = verbose
 
     def stop(self, success: bool) -> None:
         self._live.stop()
-        prefix = "[dim]\\[AGENT][/dim]"
-        icon = "[green]✓[/green]" if success else "[red]✗[/red]"
-        _console.print(f"{prefix} {icon} {self._text}")
+        if self._verbose:
+            prefix = "[dim]\\[AGENT][/dim]"
+            icon = "[green]✓[/green]" if success else "[red]✗[/red]"
+            _console.print(f"{prefix} {icon} {self._text}")
 
 
-def start_spinner(persona: PersonaDefinition, prompt: str) -> Optional[SpinnerHandle]:
+def start_spinner(persona: PersonaDefinition, prompt: str, verbose: bool = False) -> Optional[SpinnerHandle]:
     if not _should_log("info"):
+        return None
+
+    if not verbose:
         return None
 
     truncated = prompt[:57] + "..." if len(prompt) > 60 else prompt
@@ -57,7 +65,7 @@ def start_spinner(persona: PersonaDefinition, prompt: str) -> Optional[SpinnerHa
     spinner = Spinner("dots", text=text)
     live = Live(spinner, console=_console, transient=True)
     live.start()
-    return SpinnerHandle(live, text)
+    return SpinnerHandle(live, text, verbose=True)
 
 
 def stop_spinner(spinner: Optional[SpinnerHandle], success: bool) -> None:
@@ -68,10 +76,19 @@ def stop_spinner(spinner: Optional[SpinnerHandle], success: bool) -> None:
 # ─── Result Formatting ──────────────────────────────────────────────────────
 
 
-def format_result(result: AgentResult, persona: PersonaDefinition) -> None:
+def format_result(result: AgentResult, persona: PersonaDefinition, verbose: bool = False) -> None:
     if not _should_log("info"):
         return
 
+    if not verbose:
+        # Quiet mode: just summary + meaningful data
+        _console.print(result.summary)
+        for key, value in result.data.items():
+            display_value = value if isinstance(value, str) else json.dumps(value)
+            _console.print(f"  {key}: {display_value}")
+        return
+
+    # Verbose mode: full [AGENT] tree
     prefix = "[dim]\\[AGENT][/dim]"
 
     if result.confidence >= 0.8:
@@ -116,10 +133,16 @@ def format_result(result: AgentResult, persona: PersonaDefinition) -> None:
 # ─── Error Formatting ────────────────────────────────────────────────────────
 
 
-def format_error(error: Exception, persona: PersonaDefinition) -> None:
+def format_error(error: Exception, persona: PersonaDefinition, verbose: bool = False) -> None:
     if not _should_log("errors"):
         return
 
+    if not verbose:
+        # Quiet mode: just the error message
+        _console.print(f"Error: {error}")
+        return
+
+    # Verbose mode: full [AGENT] prefix
     prefix = "[dim]\\[AGENT][/dim]"
     _console.print()
     _console.print(f"{prefix} {persona.icon} [red]Error:[/red] {error}")
@@ -133,8 +156,11 @@ def format_error(error: Exception, persona: PersonaDefinition) -> None:
 # ─── Budget Warning ──────────────────────────────────────────────────────────
 
 
-def format_budget_warning(reason: str) -> None:
+def format_budget_warning(reason: str, verbose: bool = False) -> None:
     if not _should_log("errors"):
+        return
+    if not verbose:
+        _console.print(f"Budget limit: {reason}")
         return
     prefix = "[dim]\\[AGENT][/dim]"
     _console.print(f"{prefix} [yellow]⚠ Budget limit:[/yellow] {reason}")
@@ -143,8 +169,11 @@ def format_budget_warning(reason: str) -> None:
 # ─── Rate Limit Warning ─────────────────────────────────────────────────────
 
 
-def format_rate_limit_warning() -> None:
+def format_rate_limit_warning(verbose: bool = False) -> None:
     if not _should_log("errors"):
+        return
+    if not verbose:
+        _console.print("Rate limited: Too many calls. Try again later.")
         return
     prefix = "[dim]\\[AGENT][/dim]"
     _console.print(f"{prefix} [yellow]⚠ Rate limited:[/yellow] Too many calls. Try again later.")
@@ -157,10 +186,17 @@ def format_dry_run(
     prompt: str,
     persona: PersonaDefinition,
     context: Any = None,
+    verbose: bool = False,
 ) -> None:
     if not _should_log("info"):
         return
 
+    if not verbose:
+        # Quiet mode: minimal output
+        _console.print(f"[DRY RUN] {persona.label}: {prompt}")
+        return
+
+    # Verbose mode: full tree
     prefix = "[dim]\\[AGENT][/dim]"
     _console.print()
     _console.print(f"{prefix} [magenta]DRY RUN[/magenta] {persona.icon} {persona.label}")

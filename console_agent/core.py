@@ -132,6 +132,13 @@ async def execute_agent(
 ) -> AgentResult:
     """Execute an agent call. This is the core function behind agent()."""
 
+    # Resolve verbose flag: per-call option > global config
+    verbose = (
+        options.verbose
+        if (options and options.verbose is not None)
+        else _config.verbose
+    )
+
     # Determine persona
     persona_name: PersonaName = (
         options.persona if options and options.persona else _config.persona
@@ -146,18 +153,18 @@ async def execute_agent(
 
     # Dry run — log without calling API
     if _config.dry_run:
-        format_dry_run(prompt, persona, context)
+        format_dry_run(prompt, persona, context, verbose=verbose)
         return _create_dry_run_result(persona.name)
 
     # Check rate limits
     if not _rate_limiter.try_consume():
-        format_rate_limit_warning()
+        format_rate_limit_warning(verbose=verbose)
         return _create_error_result("Rate limited — too many calls. Try again later.")
 
     # Check budget
     budget_check = _budget_tracker.can_make_call()
     if not budget_check.allowed:
-        format_budget_warning(budget_check.reason or "Budget exceeded")
+        format_budget_warning(budget_check.reason or "Budget exceeded", verbose=verbose)
         return _create_error_result(budget_check.reason or "Budget exceeded")
 
     # Anonymize context if enabled
@@ -193,7 +200,7 @@ async def execute_agent(
         processed_prompt = str(processed_prompt)
 
     # Start spinner
-    spinner = start_spinner(persona, processed_prompt)
+    spinner = start_spinner(persona, processed_prompt, verbose=verbose)
 
     try:
         # Execute with timeout (convert ms to seconds)
@@ -211,17 +218,17 @@ async def execute_agent(
 
         # Stop spinner and format output
         stop_spinner(spinner, result.success)
-        format_result(result, persona)
+        format_result(result, persona, verbose=verbose)
 
         return result
 
     except asyncio.TimeoutError:
         stop_spinner(spinner, False)
         err = TimeoutError(f"Agent timed out after {_config.timeout}ms")
-        format_error(err, persona)
+        format_error(err, persona, verbose=verbose)
         return _create_error_result(str(err))
 
     except Exception as err:
         stop_spinner(spinner, False)
-        format_error(err, persona)
+        format_error(err, persona, verbose=verbose)
         return _create_error_result(str(err))

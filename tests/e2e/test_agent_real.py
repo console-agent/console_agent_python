@@ -60,6 +60,7 @@ class TestRealAgent:
             log_level="info",
             anonymize=False,
             timeout=25000,
+            verbose=True,
         )
 
     def test_basic_prompt_returns_valid_structured_result(self):
@@ -197,6 +198,7 @@ class TestCustomStructuredOutput:
             log_level="info",
             anonymize=False,
             timeout=25000,
+            verbose=True,
         )
 
     def test_pydantic_schema_returns_typed_structured_output(self):
@@ -296,6 +298,7 @@ class TestAsyncAgent:
             log_level="info",
             anonymize=False,
             timeout=25000,
+            verbose=True,
         )
 
     @pytest.mark.asyncio

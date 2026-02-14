@@ -24,6 +24,11 @@ Usage::
 
     # Async
     result = await agent.arun("analyze this", context=data)
+
+    # Verbose output (full [AGENT] tree, spinners, metadata)
+    init(verbose=True)
+    # or per-call:
+    agent("analyze this", verbose=True)
 """
 
 from __future__ import annotations
@@ -84,6 +89,7 @@ def init(**kwargs: Any) -> None:
             model="gemini-2.5-flash-lite",
             persona="debugger",
             budget={"max_calls_per_day": 200},
+            verbose=True,
         )
     """
     update_config(**kwargs)
@@ -148,6 +154,7 @@ class _AgentCallable:
         thinking: Optional[dict[str, Any]] = None,
         schema_model: Any = None,
         response_format: Optional[dict[str, Any]] = None,
+        verbose: Optional[bool] = None,
         **kwargs: Any,
     ) -> AgentResult:
         """Execute an agent call synchronously.
@@ -161,6 +168,7 @@ class _AgentCallable:
             thinking: Thinking/reasoning config dict.
             schema_model: Pydantic model class for typed structured output.
             response_format: Plain JSON Schema for structured output.
+            verbose: Override verbose output for this call.
         """
         options = self._build_options(
             model=model,
@@ -169,6 +177,7 @@ class _AgentCallable:
             thinking=thinking,
             schema_model=schema_model,
             response_format=response_format,
+            verbose=verbose,
         )
 
         config = get_config()
@@ -191,6 +200,7 @@ class _AgentCallable:
         thinking: Optional[dict[str, Any]] = None,
         schema_model: Any = None,
         response_format: Optional[dict[str, Any]] = None,
+        verbose: Optional[bool] = None,
         **kwargs: Any,
     ) -> AgentResult:
         """Execute an agent call asynchronously.
@@ -204,6 +214,7 @@ class _AgentCallable:
             thinking=thinking,
             schema_model=schema_model,
             response_format=response_format,
+            verbose=verbose,
         )
         return await execute_agent(prompt, context, options)
 
@@ -237,11 +248,12 @@ class _AgentCallable:
         thinking: Optional[dict[str, Any]] = None,
         schema_model: Any = None,
         response_format: Optional[dict[str, Any]] = None,
+        verbose: Optional[bool] = None,
     ) -> Optional[AgentCallOptions]:
         """Build AgentCallOptions from keyword arguments."""
         has_any = any(
             v is not None
-            for v in [model, persona, mode, thinking, schema_model, response_format]
+            for v in [model, persona, mode, thinking, schema_model, response_format, verbose]
         )
         if not has_any:
             return None
@@ -256,6 +268,7 @@ class _AgentCallable:
             thinking=thinking_config,
             schema_model=schema_model,
             response_format=rf,
+            verbose=verbose,
         )
 
 

@@ -168,6 +168,7 @@ class AgentCallOptions(BaseModel):
     mode: Optional[Literal["fire-and-forget", "blocking"]] = None
     schema_model: Optional[Any] = None  # Pydantic model class for typed output
     response_format: Optional[ResponseFormat] = None
+    verbose: Optional[bool] = None
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -189,4 +190,5 @@ class AgentConfig(BaseModel):
     local_only: bool = False
     dry_run: bool = False
     log_level: LogLevel = "info"
+    verbose: bool = False
     safety_settings: List[SafetySetting] = Field(default_factory=list)

@@ -29,6 +29,9 @@ class TestDefaultConfig:
     def test_default_log_level(self):
         assert DEFAULT_CONFIG.log_level == "info"
 
+    def test_default_verbose(self):
+        assert DEFAULT_CONFIG.verbose is False
+
     def test_default_budget(self):
         assert DEFAULT_CONFIG.budget.max_calls_per_day == 100
         assert DEFAULT_CONFIG.budget.max_tokens_per_call == 8000
