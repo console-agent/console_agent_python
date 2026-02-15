@@ -158,6 +158,16 @@ class ResponseFormat(BaseModel):
 LogLevel = Literal["silent", "errors", "info", "debug"]
 
 
+class FileAttachment(BaseModel):
+    """A file to attach to an agent call (PDF, image, etc.).
+
+    Uses Agno's native File class under the hood for multipart uploads.
+    """
+
+    filepath: str  # Path to the file on disk
+    media_type: Optional[str] = None  # Optional MIME type override
+
+
 class AgentCallOptions(BaseModel):
     """Per-call overrides passed to agent()."""
 
@@ -169,6 +179,8 @@ class AgentCallOptions(BaseModel):
     schema_model: Optional[Any] = None  # Pydantic model class for typed output
     response_format: Optional[ResponseFormat] = None
     verbose: Optional[bool] = None
+    include_caller_source: Optional[bool] = None  # Override for this call
+    files: Optional[List[FileAttachment]] = None  # Explicit file attachments
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -191,4 +203,5 @@ class AgentConfig(BaseModel):
     dry_run: bool = False
     log_level: LogLevel = "info"
     verbose: bool = False
+    include_caller_source: bool = True
     safety_settings: List[SafetySetting] = Field(default_factory=list)

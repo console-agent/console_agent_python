@@ -19,10 +19,17 @@ from .types import (
     AgentMetadata,
     AgentResult,
     BudgetConfig,
+    FileAttachment,
     PersonaName,
 )
 from .utils.anonymize import anonymize_value
 from .utils.budget import BudgetTracker
+from .utils.caller_file import (
+    SourceFileInfo,
+    format_source_for_context,
+    get_caller_file,
+    get_error_source_file,
+)
 from .utils.format import (
     format_budget_warning,
     format_dry_run,
@@ -199,6 +206,36 @@ async def execute_agent(
     if not isinstance(processed_prompt, str):
         processed_prompt = str(processed_prompt)
 
+    # ─── Auto-detect caller source file ──────────────────────────────────
+    should_include_source = (
+        options.include_caller_source
+        if (options and options.include_caller_source is not None)
+        else _config.include_caller_source
+    )
+    source_file: Optional[SourceFileInfo] = None
+
+    if should_include_source:
+        # Priority 1: If context is an Exception, get the file where it originated
+        if isinstance(context, BaseException):
+            source_file = get_error_source_file(context)
+            if source_file:
+                log_debug(
+                    f"Auto-detected error source file: {source_file.file_name} "
+                    f"(line {source_file.line})"
+                )
+
+        # Priority 2: Get the caller file (where agent() was called)
+        if not source_file:
+            source_file = get_caller_file()
+            if source_file:
+                log_debug(
+                    f"Auto-detected caller file: {source_file.file_name} "
+                    f"(line {source_file.line})"
+                )
+
+    # Collect explicit file attachments
+    files = options.files if options else None
+
     # Start spinner
     spinner = start_spinner(persona, processed_prompt, verbose=verbose)
 
@@ -206,7 +243,10 @@ async def execute_agent(
         # Execute with timeout (convert ms to seconds)
         timeout_sec = _config.timeout / 1000.0
         result = await asyncio.wait_for(
-            call_google(processed_prompt, context_str, persona, _config, options),
+            call_google(
+                processed_prompt, context_str, persona, _config, options,
+                source_file=source_file, files=files,
+            ),
             timeout=timeout_sec,
         )
 

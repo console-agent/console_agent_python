@@ -24,9 +24,11 @@ from ..types import (
     AgentMetadata,
     AgentOutputSchema,
     AgentResult,
+    FileAttachment,
     PersonaDefinition,
     ToolCall,
 )
+from ..utils.caller_file import SourceFileInfo, format_source_for_context
 from ..utils.format import log_debug
 
 
@@ -126,12 +128,52 @@ def _extract_tokens(run_response: Any) -> int:
 # ─── Main Entry Point ────────────────────────────────────────────────────────
 
 
+def _build_user_message(
+    prompt: str,
+    context: str,
+    source_file: Optional[SourceFileInfo] = None,
+) -> str:
+    """Build the user message combining prompt, context, and auto-detected source."""
+    parts: list[str] = [prompt]
+
+    if context:
+        parts.append(f"\n--- Context ---\n{context}")
+
+    if source_file:
+        formatted = format_source_for_context(source_file)
+        parts.append(f"\n{formatted}")
+
+    return "\n".join(parts)
+
+
+def _build_agno_files(
+    files: Optional[List[FileAttachment]],
+) -> Optional[List[Any]]:
+    """Convert FileAttachment list to Agno File objects."""
+    if not files:
+        return None
+
+    from pathlib import Path
+
+    from agno.media import File
+
+    agno_files: List[Any] = []
+    for fa in files:
+        file_path = Path(fa.filepath)
+        log_debug(f"Attaching file: {file_path.name}")
+        agno_files.append(File(filepath=file_path))
+
+    return agno_files if agno_files else None
+
+
 async def call_google(
     prompt: str,
     context: str,
     persona: PersonaDefinition,
     config: AgentConfig,
     options: Optional[AgentCallOptions] = None,
+    source_file: Optional[SourceFileInfo] = None,
+    files: Optional[List[FileAttachment]] = None,
 ) -> AgentResult:
     """Call the Google Gemini provider via Agno Agent.
 
@@ -156,12 +198,14 @@ async def call_google(
     if use_tools:
         log_debug("Tools requested — using tools path (no structured output)")
         return await _call_with_tools(
-            prompt, context, persona, config, options, api_key, model_name, start_time
+            prompt, context, persona, config, options, api_key, model_name, start_time,
+            source_file, files,
         )
 
     log_debug("No tools — using structured output path")
     return await _call_with_structured_output(
-        prompt, context, persona, config, options, api_key, model_name, start_time
+        prompt, context, persona, config, options, api_key, model_name, start_time,
+        source_file, files,
     )
 
 
@@ -177,6 +221,8 @@ async def _call_with_tools(
     api_key: Optional[str],
     model_name: str,
     start_time: float,
+    source_file: Optional[SourceFileInfo] = None,
+    files: Optional[List[FileAttachment]] = None,
 ) -> AgentResult:
     """Execute with native Gemini tools (google_search, url_context, code_execution).
 
@@ -198,8 +244,11 @@ async def _call_with_tools(
     effective_timeout = max(config.timeout, TOOLS_MIN_TIMEOUT)
     log_debug(f"Effective timeout: {effective_timeout}ms (tools active)")
 
-    # Build user message
-    user_message = f"{prompt}\n\n--- Context ---\n{context}" if context else prompt
+    # Build user message (includes source file context)
+    user_message = _build_user_message(prompt, context, source_file)
+
+    # Build Agno File objects for explicit file attachments
+    agno_files = _build_agno_files(files)
 
     # Build instructions with JSON response instruction
     instructions = persona.system_prompt + JSON_RESPONSE_INSTRUCTION
@@ -214,8 +263,11 @@ async def _call_with_tools(
         markdown=False,
     )
 
-    # Execute the agent
-    run_response = await agent.arun(user_message)
+    # Execute the agent (with optional file attachments)
+    arun_kwargs: Dict[str, Any] = {}
+    if agno_files:
+        arun_kwargs["files"] = agno_files
+    run_response = await agent.arun(user_message, **arun_kwargs)
 
     latency_ms = int((time.time() - start_time) * 1000)
     tokens_used = _extract_tokens(run_response)
@@ -277,6 +329,8 @@ async def _call_with_structured_output(
     api_key: Optional[str],
     model_name: str,
     start_time: float,
+    source_file: Optional[SourceFileInfo] = None,
+    files: Optional[List[FileAttachment]] = None,
 ) -> AgentResult:
     """Execute without tools — uses structured JSON output via Agno Agent."""
     from agno.agent import Agent
@@ -298,8 +352,11 @@ async def _call_with_structured_output(
     else:
         instructions = persona.system_prompt
 
-    # Build the user message with context
-    user_message = f"{prompt}\n\n--- Context ---\n{context}" if context else prompt
+    # Build the user message (includes source file context)
+    user_message = _build_user_message(prompt, context, source_file)
+
+    # Build Agno File objects for explicit file attachments
+    agno_files = _build_agno_files(files)
 
     # Determine response model
     use_pydantic_schema = bool(options and options.schema_model)
@@ -333,8 +390,11 @@ async def _call_with_structured_output(
 
     agent = Agent(**agent_kwargs)
 
-    # Execute the agent
-    run_response = await agent.arun(user_message)
+    # Execute the agent (with optional file attachments)
+    arun_kwargs: Dict[str, Any] = {}
+    if agno_files:
+        arun_kwargs["files"] = agno_files
+    run_response = await agent.arun(user_message, **arun_kwargs)
 
     latency_ms = int((time.time() - start_time) * 1000)
     tokens_used = _extract_tokens(run_response)
