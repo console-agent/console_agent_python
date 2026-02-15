@@ -325,3 +325,177 @@ class TestAsyncAgent:
             "Async persona result:",
             json.dumps(result.model_dump(), indent=2, default=str),
         )
+
+
+class TestNativeTools:
+    """E2E: Native Gemini tools (google_search, url_context, code_execution).
+
+    These tests exercise the two-path provider architecture:
+    - WITH tools → Gemini model flags (search=True, url_context=True, etc.)
+    - Text response parsed as JSON (no structured output in tools mode)
+    """
+
+    def setup_method(self):
+        init(
+            api_key=API_KEY,
+            model="gemini-2.5-flash",
+            mode="blocking",
+            log_level="info",
+            anonymize=False,
+            timeout=60000,  # Tools need longer timeout
+            verbose=True,
+        )
+
+    def test_google_search_returns_valid_result(self):
+        """google_search tool — returns grounded search results"""
+        result = agent(
+            "What is the current version of Python? Answer concisely.",
+            tools=["google_search"],
+        )
+
+        assert result is not None
+        assert isinstance(result.success, bool)
+        assert isinstance(result.summary, str)
+        assert len(result.summary) > 0
+        assert isinstance(result.data, dict)
+        assert isinstance(result.metadata.model, str)
+        assert result.metadata.latency_ms > 0
+        print(
+            "Google Search result:",
+            json.dumps(result.model_dump(), indent=2, default=str),
+        )
+
+    def test_url_context_analyzes_webpage(self):
+        """url_context tool — fetches and analyzes URL content"""
+        result = agent(
+            "Summarize the main points from this URL: https://docs.python.org/3/faq/general.html",
+            tools=["url_context"],
+        )
+
+        assert result is not None
+        assert isinstance(result.success, bool)
+        assert isinstance(result.summary, str)
+        assert len(result.summary) > 0
+        assert isinstance(result.data, dict)
+        assert result.metadata.latency_ms > 0
+        # Should contain Python-related content
+        full_text = json.dumps(result.model_dump(), default=str).lower()
+        assert any(
+            kw in full_text for kw in ["python", "language", "programming"]
+        ), f"Expected Python-related content, got: {full_text[:300]}"
+        print(
+            "URL Context result:",
+            json.dumps(result.model_dump(), indent=2, default=str),
+        )
+
+    def test_code_execution_runs_python_code(self):
+        """code_execution tool — executes Python code server-side"""
+        result = agent(
+            "Calculate the sum of the first 100 prime numbers. "
+            "Write and execute Python code to compute this.",
+            tools=["code_execution"],
+        )
+
+        assert result is not None
+        assert isinstance(result.success, bool)
+        assert isinstance(result.summary, str)
+        assert len(result.summary) > 0
+        assert isinstance(result.data, dict)
+        assert result.metadata.latency_ms > 0
+        print(
+            "Code Execution result:",
+            json.dumps(result.model_dump(), indent=2, default=str),
+        )
+
+    def test_google_search_plus_url_context_combined(self):
+        """google_search + url_context — combined web analysis"""
+        result = agent(
+            "Search for the Agno AI framework and analyze https://docs.agno.com/introduction "
+            "Provide a detailed summary of what Agno is.",
+            tools=["google_search", "url_context"],
+        )
+
+        assert result is not None
+        assert isinstance(result.success, bool)
+        assert isinstance(result.summary, str)
+        assert isinstance(result.data, dict)
+        assert result.metadata.latency_ms > 0
+        print(
+            "Search + URL Context result:",
+            json.dumps(result.model_dump(), indent=2, default=str),
+        )
+
+    def test_all_three_tools_combined(self):
+        """google_search + url_context + code_execution — all tools"""
+        result = agent(
+            "Search for Python statistics about popularity in 2025, "
+            "analyze https://www.python.org and then write a short Python script "
+            "that prints 'Hello from code execution'.",
+            tools=["google_search", "url_context", "code_execution"],
+        )
+
+        assert result is not None
+        assert isinstance(result.success, bool)
+        assert isinstance(result.summary, str)
+        assert len(result.summary) > 0
+        assert isinstance(result.data, dict)
+        assert result.metadata.latency_ms > 0
+        print(
+            "All three tools result:",
+            json.dumps(result.model_dump(), indent=2, default=str),
+        )
+
+    def test_tools_with_security_persona(self):
+        """tools + persona — google_search with security persona"""
+        result = agent.security(
+            "Search for the latest OWASP Top 10 vulnerabilities and summarize the top 3",
+            tools=["google_search"],
+        )
+
+        assert result is not None
+        assert isinstance(result.success, bool)
+        assert isinstance(result.summary, str)
+        assert len(result.summary) > 0
+        assert isinstance(result.data, dict)
+        assert result.metadata.latency_ms > 0
+        print(
+            "Tools + Persona result:",
+            json.dumps(result.model_dump(), indent=2, default=str),
+        )
+
+    @pytest.mark.asyncio
+    async def test_async_google_search(self):
+        """async google_search — works with arun()"""
+        result = await agent.arun(
+            "What is the latest stable Node.js version? Answer concisely.",
+            tools=["google_search"],
+        )
+
+        assert result is not None
+        assert isinstance(result.success, bool)
+        assert isinstance(result.summary, str)
+        assert len(result.summary) > 0
+        assert result.metadata.latency_ms > 0
+        print(
+            "Async Google Search result:",
+            json.dumps(result.model_dump(), indent=2, default=str),
+        )
+
+    @pytest.mark.asyncio
+    async def test_async_url_context(self):
+        """async url_context — works with arun()"""
+        result = await agent.arun(
+            "What is described at https://docs.python.org/3/tutorial/index.html? "
+            "Give a brief summary.",
+            tools=["url_context"],
+        )
+
+        assert result is not None
+        assert isinstance(result.success, bool)
+        assert isinstance(result.summary, str)
+        assert len(result.summary) > 0
+        assert result.metadata.latency_ms > 0
+        print(
+            "Async URL Context result:",
+            json.dumps(result.model_dump(), indent=2, default=str),
+        )

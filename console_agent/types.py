@@ -72,7 +72,7 @@ class AgentOutputSchema(BaseModel):
 
 PersonaName = Literal["debugger", "security", "architect", "general"]
 
-ToolName = Literal["code_execution", "google_search", "file_analysis"]
+ToolName = Literal["code_execution", "google_search", "url_context", "file_analysis"]
 
 
 class PersonaDefinition(BaseModel):

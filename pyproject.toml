@@ -4,11 +4,11 @@ build-backend = "hatchling.build"
 
 [project]
 name = "console-agent"
-version = "1.1.0"
+version = "1.2.0"
 description = "Drop agent() anywhere in your code to execute agentic workflows — as easy as print()"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.9"
+requires-python = ">=3.12"
 authors = [
     { name = "Console Agent", email = "console.agent.npm@gmail.com" },
 ]
@@ -29,9 +29,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Debuggers",

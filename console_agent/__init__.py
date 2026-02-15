@@ -149,6 +149,7 @@ class _AgentCallable:
         context: Any = None,
         *,
         model: Optional[str] = None,
+        tools: Optional[list[Any]] = None,
         persona: Optional[PersonaName] = None,
         mode: Optional[str] = None,
         thinking: Optional[dict[str, Any]] = None,
@@ -163,6 +164,9 @@ class _AgentCallable:
             prompt: The task or question for the agent.
             context: Additional context (error objects, data, code, etc.).
             model: Override model for this call.
+            tools: Native Gemini tools to enable. Accepts tool names like
+                ``["google_search"]``, ``["google_search", "url_context"]``,
+                ``["code_execution"]``, or ToolConfig objects.
             persona: Force persona for this call.
             mode: Override execution mode ('fire-and-forget' or 'blocking').
             thinking: Thinking/reasoning config dict.
@@ -172,6 +176,7 @@ class _AgentCallable:
         """
         options = self._build_options(
             model=model,
+            tools=tools,
             persona=persona,
             mode=mode,
             thinking=thinking,
@@ -195,6 +200,7 @@ class _AgentCallable:
         context: Any = None,
         *,
         model: Optional[str] = None,
+        tools: Optional[list[Any]] = None,
         persona: Optional[PersonaName] = None,
         mode: Optional[str] = None,
         thinking: Optional[dict[str, Any]] = None,
@@ -209,6 +215,7 @@ class _AgentCallable:
         """
         options = self._build_options(
             model=model,
+            tools=tools,
             persona=persona,
             mode=mode,
             thinking=thinking,
@@ -243,6 +250,7 @@ class _AgentCallable:
     @staticmethod
     def _build_options(
         model: Optional[str] = None,
+        tools: Optional[list[Any]] = None,
         persona: Optional[PersonaName] = None,
         mode: Optional[str] = None,
         thinking: Optional[dict[str, Any]] = None,
@@ -253,7 +261,7 @@ class _AgentCallable:
         """Build AgentCallOptions from keyword arguments."""
         has_any = any(
             v is not None
-            for v in [model, persona, mode, thinking, schema_model, response_format, verbose]
+            for v in [model, tools, persona, mode, thinking, schema_model, response_format, verbose]
         )
         if not has_any:
             return None
@@ -263,6 +271,7 @@ class _AgentCallable:
 
         return AgentCallOptions(
             model=model,
+            tools=tools,
             persona=persona,
             mode=mode,  # type: ignore[arg-type]
             thinking=thinking_config,

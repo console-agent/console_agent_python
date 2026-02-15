@@ -48,3 +48,29 @@ class TestDryRun:
     def test_dry_run_confidence_is_1(self):
         result = agent("test")
         assert result.confidence == 1.0
+
+    def test_dry_run_with_google_search_tool(self):
+        result = agent("search for latest news", tools=["google_search"])
+        assert result.success is True
+        assert "DRY RUN" in result.summary
+
+    def test_dry_run_with_url_context_tool(self):
+        result = agent("analyze https://example.com", tools=["url_context"])
+        assert result.success is True
+        assert "DRY RUN" in result.summary
+
+    def test_dry_run_with_multiple_tools(self):
+        result = agent(
+            "search and analyze",
+            tools=["google_search", "url_context", "code_execution"],
+        )
+        assert result.success is True
+        assert "DRY RUN" in result.summary
+
+    def test_dry_run_tools_with_persona(self):
+        result = agent.security(
+            "audit this endpoint",
+            tools=["google_search"],
+        )
+        assert result.success is True
+        assert "DRY RUN" in result.summary

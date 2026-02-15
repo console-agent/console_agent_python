@@ -1,7 +1,12 @@
 """
 Google AI provider — integrates with Gemini via Agno.
-Uses Agno's Agent with Gemini model for multi-step reasoning + structured output.
-This is the only provider in v1.0.
+
+Two execution paths (mirroring the TypeScript SDK):
+1. WITHOUT tools → Agno Agent with structured output (use_json_mode=True)
+2. WITH tools → Agno Agent with provider tools (google_search, url_context,
+   code_execution). Tools are incompatible with structured JSON output at
+   the Gemini API level, so we instruct the model via prompt and parse the
+   text response.
 """
 
 from __future__ import annotations
@@ -12,6 +17,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
+from ..tools import TOOLS_MIN_TIMEOUT, has_explicit_tools, resolve_tools
 from ..types import (
     AgentCallOptions,
     AgentConfig,
@@ -24,6 +30,19 @@ from ..types import (
 from ..utils.format import log_debug
 
 
+# ─── JSON prompt suffix for tool-mode (no structured output available) ───────
+
+JSON_RESPONSE_INSTRUCTION = (
+    "\n\nIMPORTANT: You MUST respond with ONLY a valid JSON object "
+    "(no markdown, no code fences, no extra text).\n"
+    'Use this exact format:\n'
+    '{"success": true, "summary": "one-line conclusion", '
+    '"reasoning": "your thought process", '
+    '"data": {"result": "primary finding"}, '
+    '"actions": ["tools/steps used"], "confidence": 0.95}'
+)
+
+
 def _coerce_data(raw: Any) -> Dict[str, Any]:
     """Ensure the data field is always a dict (LLM sometimes returns a list)."""
     if isinstance(raw, dict):
@@ -33,6 +52,7 @@ def _coerce_data(raw: Any) -> Dict[str, Any]:
     if raw is None:
         return {}
     return {"value": raw}
+
 
 def _coerce_actions(raw: Any) -> List[str]:
     """Ensure actions is always a list of strings (LLM sometimes returns dicts)."""
@@ -90,6 +110,22 @@ def _parse_response(text: str) -> Optional[Dict[str, Any]]:
     }
 
 
+def _extract_tokens(run_response: Any) -> int:
+    """Extract token usage from an Agno run response."""
+    tokens_used = 0
+    if hasattr(run_response, "metrics") and run_response.metrics:
+        metrics = run_response.metrics
+        tokens_used = getattr(metrics, "total_tokens", 0) or 0
+        if not tokens_used:
+            input_tokens = getattr(metrics, "input_tokens", 0) or 0
+            output_tokens = getattr(metrics, "output_tokens", 0) or 0
+            tokens_used = input_tokens + output_tokens
+    return tokens_used
+
+
+# ─── Main Entry Point ────────────────────────────────────────────────────────
+
+
 async def call_google(
     prompt: str,
     context: str,
@@ -97,12 +133,12 @@ async def call_google(
     config: AgentConfig,
     options: Optional[AgentCallOptions] = None,
 ) -> AgentResult:
-    """Call the Google Gemini provider via Agno Agent."""
-    # Lazy imports to avoid module-level ImportError when agno/google-genai
-    # versions are mismatched (only fails when actually calling the provider).
-    from agno.agent import Agent
-    from agno.models.google import Gemini
+    """Call the Google Gemini provider via Agno Agent.
 
+    Routes to one of two paths:
+    1. WITH tools → _call_with_tools (provider native tools, text response)
+    2. WITHOUT tools → _call_with_structured_output (JSON mode)
+    """
     start_time = time.time()
     model_name = (options.model if options and options.model else None) or config.model
 
@@ -113,6 +149,138 @@ async def call_google(
     api_key = config.api_key or os.environ.get("GEMINI_API_KEY") or os.environ.get(
         "GOOGLE_GENERATIVE_AI_API_KEY"
     )
+
+    # Route: tools or structured output?
+    use_tools = has_explicit_tools(options) and not config.local_only
+
+    if use_tools:
+        log_debug("Tools requested — using tools path (no structured output)")
+        return await _call_with_tools(
+            prompt, context, persona, config, options, api_key, model_name, start_time
+        )
+
+    log_debug("No tools — using structured output path")
+    return await _call_with_structured_output(
+        prompt, context, persona, config, options, api_key, model_name, start_time
+    )
+
+
+# ─── Path 1: WITH TOOLS (native Gemini tools, text response) ────────────────
+
+
+async def _call_with_tools(
+    prompt: str,
+    context: str,
+    persona: PersonaDefinition,
+    config: AgentConfig,
+    options: Optional[AgentCallOptions],
+    api_key: Optional[str],
+    model_name: str,
+    start_time: float,
+) -> AgentResult:
+    """Execute with native Gemini tools (google_search, url_context, code_execution).
+
+    Provider tools are incompatible with structured JSON output at the Gemini
+    API level, so we instruct the model via prompt and parse the text response.
+    """
+    from agno.agent import Agent
+    from agno.models.google import Gemini
+
+    # Resolve tool names into Gemini model kwargs
+    tool_kwargs = resolve_tools(options.tools) if options and options.tools else {}
+    tool_names = [
+        (t if isinstance(t, str) else t.type)
+        for t in (options.tools if options and options.tools else [])
+    ]
+    log_debug(f"Tools enabled: {', '.join(tool_names)}")
+
+    # Apply minimum timeout for tools
+    effective_timeout = max(config.timeout, TOOLS_MIN_TIMEOUT)
+    log_debug(f"Effective timeout: {effective_timeout}ms (tools active)")
+
+    # Build user message
+    user_message = f"{prompt}\n\n--- Context ---\n{context}" if context else prompt
+
+    # Build instructions with JSON response instruction
+    instructions = persona.system_prompt + JSON_RESPONSE_INSTRUCTION
+
+    # Create Gemini model with tool flags
+    gemini_model = Gemini(id=model_name, api_key=api_key, **tool_kwargs)
+
+    # Create Agno Agent — no use_json_mode (incompatible with provider tools)
+    agent = Agent(
+        model=gemini_model,
+        instructions=instructions,
+        markdown=False,
+    )
+
+    # Execute the agent
+    run_response = await agent.arun(user_message)
+
+    latency_ms = int((time.time() - start_time) * 1000)
+    tokens_used = _extract_tokens(run_response)
+
+    log_debug(f"Response received (tools path): {latency_ms}ms, {tokens_used} tokens")
+
+    # Collect tool calls from response metadata
+    collected_tool_calls: List[ToolCall] = []
+    # Agno may expose tool calls in response messages
+    if hasattr(run_response, "messages") and run_response.messages:
+        for msg in run_response.messages:
+            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tc_name = getattr(tc, "name", None) or getattr(
+                        tc, "function", {}).get("name", "unknown"
+                    )
+                    tc_args = getattr(tc, "arguments", {}) or getattr(
+                        tc, "function", {}).get("arguments", {}
+                    )
+                    collected_tool_calls.append(
+                        ToolCall(name=str(tc_name), args=tc_args if isinstance(tc_args, dict) else {})
+                    )
+
+    log_debug(f"Tool calls collected: {len(collected_tool_calls)}")
+
+    # Parse text response (no structured output in tools mode)
+    content = run_response.content
+    text = str(content) if content else ""
+    parsed = _parse_response(text)
+
+    return AgentResult(
+        success=parsed.get("success", True) if parsed else True,
+        summary=parsed.get("summary", text[:200]) if parsed else text[:200],
+        reasoning=parsed.get("reasoning") if parsed else None,
+        data=_coerce_data(parsed.get("data", {"raw": text}) if parsed else {"raw": text}),
+        actions=_coerce_actions(
+            parsed.get("actions", []) if parsed else []
+        ) or [tc.name for tc in collected_tool_calls],
+        confidence=parsed.get("confidence", 0.5) if parsed else 0.5,
+        metadata=AgentMetadata(
+            model=model_name,
+            tokens_used=tokens_used,
+            latency_ms=latency_ms,
+            tool_calls=collected_tool_calls,
+            cached=False,
+        ),
+    )
+
+
+# ─── Path 2: WITHOUT TOOLS (structured output) ──────────────────────────────
+
+
+async def _call_with_structured_output(
+    prompt: str,
+    context: str,
+    persona: PersonaDefinition,
+    config: AgentConfig,
+    options: Optional[AgentCallOptions],
+    api_key: Optional[str],
+    model_name: str,
+    start_time: float,
+) -> AgentResult:
+    """Execute without tools — uses structured JSON output via Agno Agent."""
+    from agno.agent import Agent
+    from agno.models.google import Gemini
 
     # Determine if we're using a custom schema
     use_custom_schema = bool(
@@ -169,16 +337,7 @@ async def call_google(
     run_response = await agent.arun(user_message)
 
     latency_ms = int((time.time() - start_time) * 1000)
-
-    # Extract token usage from response
-    tokens_used = 0
-    if hasattr(run_response, "metrics") and run_response.metrics:
-        metrics = run_response.metrics
-        tokens_used = getattr(metrics, "total_tokens", 0) or 0
-        if not tokens_used:
-            input_tokens = getattr(metrics, "input_tokens", 0) or 0
-            output_tokens = getattr(metrics, "output_tokens", 0) or 0
-            tokens_used = input_tokens + output_tokens
+    tokens_used = _extract_tokens(run_response)
 
     log_debug(f"Response received: {latency_ms}ms, {tokens_used} tokens")
 

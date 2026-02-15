@@ -1,10 +1,15 @@
 """
 Code Execution tool wrapper.
-In Agno/Gemini, code execution is a built-in capability.
-"""
+Uses Gemini's built-in code execution capability.
 
-# Gemini's built-in code execution is enabled via model settings,
-# not as a separate tool definition. This module exists for
-# structural parity with the TypeScript version.
+In Agno/Gemini, code execution is enabled via request_params:
+    Gemini(
+        id="...",
+        request_params={"tools": [{"code_execution": {}}]}
+    )
+
+This allows the model to write and execute Python code server-side
+to perform calculations, data processing, and analysis.
+"""
 
 CODE_EXECUTION_TOOL = "code_execution"
