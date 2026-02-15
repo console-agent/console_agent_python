@@ -41,6 +41,36 @@ class TestIsInternalFrame:
     def test_frozen_is_internal(self):
         assert _is_internal_frame("<frozen importlib._bootstrap>") is True
 
+    # ─── Python REPL / interactive interpreter ────────────────────────────
+
+    def test_stdin_is_internal(self):
+        """Python interactive REPL uses <stdin> as filename."""
+        assert _is_internal_frame("<stdin>") is True
+
+    def test_console_is_internal(self):
+        """Python code.InteractiveConsole uses <console> as filename."""
+        assert _is_internal_frame("<console>") is True
+
+    def test_input_is_internal(self):
+        """Some REPLs use <input> as filename."""
+        assert _is_internal_frame("<input>") is True
+
+    def test_code_py_is_internal(self):
+        """Python stdlib code.py (interactive console implementation) should be skipped."""
+        assert _is_internal_frame("/usr/lib/python3.11/code.py") is True
+
+    def test_codeop_py_is_internal(self):
+        """Python stdlib codeop.py should be skipped."""
+        assert _is_internal_frame("/usr/lib/python3.11/codeop.py") is True
+
+    def test_ipython_is_internal(self):
+        """IPython frames should be skipped."""
+        assert _is_internal_frame("/venv/lib/python3.11/site-packages/IPython/core/interactiveshell.py") is True
+
+    def test_ipykernel_is_internal(self):
+        """Jupyter kernel frames should be skipped."""
+        assert _is_internal_frame("/venv/lib/python3.11/site-packages/ipykernel/zmqshell.py") is True
+
 
 # ─── _is_source_file ─────────────────────────────────────────────────────────
 

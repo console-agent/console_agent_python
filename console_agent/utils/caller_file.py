@@ -42,6 +42,19 @@ INTERNAL_PATTERNS = [
     "<frozen",
     "<string>",
     "<module>",
+    # Python REPL / interactive interpreter
+    "<stdin>",
+    "<console>",
+    "<input>",
+    "/code.py",
+    "\\code.py",
+    "/codeop.py",
+    "\\codeop.py",
+    # IPython / Jupyter
+    "/IPython/",
+    "\\IPython\\",
+    "/ipykernel/",
+    "\\ipykernel\\",
 ]
 
 
