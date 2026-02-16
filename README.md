@@ -2,7 +2,7 @@
 
 > **`agent("debug this")` — as easy as `print()`**
 
-Drop `agent()` anywhere in your Python code to execute agentic AI workflows. Powered by Google Gemini via [Agno](https://github.com/agno-agi/agno).
+Drop `agent()` anywhere in your Python code to execute agentic AI workflows. Powered by Google Gemini & Ollama via [Agno](https://github.com/agno-agi/agno).
 
 [![PyPI](https://img.shields.io/pypi/v/console-agent)](https://pypi.org/project/console-agent/)
 [![Python](https://img.shields.io/pypi/pyversions/console-agent)](https://pypi.org/project/console-agent/)
@@ -61,14 +61,65 @@ result = await agent.arun("analyze this", context=data)
 # Works in Jupyter notebooks too!
 ```
 
+## 🔌 Providers
+
+### Google Gemini (default)
+
+Cloud-hosted, full tool support, API key required.
+
+```python
+from console_agent import init
+
+init(
+    provider="google",                # default
+    api_key="...",                    # or set GEMINI_API_KEY env var
+    model="gemini-2.5-flash-lite",   # default model
+)
+```
+
+### Ollama (Local Models)
+
+Run models locally with [Ollama](https://ollama.com). Free, private, no API key needed.
+
+```bash
+# 1. Install Ollama: https://ollama.com
+# 2. Pull a model
+ollama pull llama3.2
+```
+
+```python
+from console_agent import init
+
+init(
+    provider="ollama",
+    model="llama3.2",                         # any model from `ollama list`
+    ollama_host="http://localhost:11434",      # default
+)
+```
+
+### Provider Comparison
+
+| | Google Gemini | Ollama |
+|---|---|---|
+| Setup | `GEMINI_API_KEY` env var | Install Ollama + pull model |
+| Config | `provider="google"` | `provider="ollama"` |
+| Models | `gemini-2.5-flash-lite`, etc. | `llama3.2`, any `ollama list` model |
+| Tools | ✅ google_search, code_execution, url_context | ❌ Not supported |
+| Thinking | ✅ Supported | ❌ Not supported |
+| File attachments | ✅ Full support | ⚠️ Text-only |
+| Cost | Pay per token (very cheap) | Free (local) |
+| Privacy | Cloud (with anonymization) | 100% local |
+
 ## ⚙️ Configuration
 
 ```python
 from console_agent import init
 
 init(
+    provider="google",                # "google" | "ollama"
     api_key="...",                    # or set GEMINI_API_KEY env var
     model="gemini-2.5-flash-lite",   # default model
+    ollama_host="http://localhost:11434",  # Ollama host (when provider="ollama")
     persona="general",               # default persona
     mode="fire-and-forget",          # or "blocking"
     timeout=10000,                   # ms before timeout
@@ -139,7 +190,8 @@ console_agent/
 │   ├── security.py      # �️ Security audit
 │   └── architect.py     # 🏗️ Architecture review
 ├── providers/
-│   └── google.py        # Agno + Gemini integration
+│   ├── google.py        # Agno + Gemini integration
+│   └── ollama.py        # Agno + Ollama integration (local models)
 ├── utils/
 │   ├── anonymize.py     # PII/secret stripping
 │   ├── rate_limit.py    # Token bucket rate limiter

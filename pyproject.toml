@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "console-agent"
-version = "1.2.2"
+version = "1.2.3"
 description = "Drop agent() anywhere in your code to execute agentic workflows — as easy as print()"
 readme = "README.md"
 license = "MIT"
@@ -37,6 +37,8 @@ classifiers = [
 dependencies = [
     "agno>=1.0.0",
     "google-genai>=1.0.0",
+    "ollama>=0.3",
+    "openai>=1.0.0",
     "rich>=13.0",
     "pydantic>=2.0",
 ]

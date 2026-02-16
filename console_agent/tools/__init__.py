@@ -110,3 +110,42 @@ def has_explicit_tools(
         return False
     tools = getattr(options, "tools", None)
     return bool(tools and len(tools) > 0)
+
+
+# ─── Provider compatibility guards ──────────────────────────────────────────
+
+# Tools that are only available with the Google/Gemini provider.
+GOOGLE_ONLY_TOOLS = {"google_search", "url_context", "code_execution"}
+
+
+def validate_tools_for_provider(
+    tools: List[Union[ToolName, "ToolConfig"]],
+    provider: str,
+) -> List[Union[ToolName, "ToolConfig"]]:
+    """Filter out tools that are incompatible with the given provider.
+
+    For non-Google providers, Gemini-specific tools are removed with a warning.
+
+    Args:
+        tools: The requested tool list.
+        provider: The active provider name (e.g. "google", "ollama").
+
+    Returns:
+        Filtered list of compatible tools.
+    """
+    if provider == "google":
+        return tools
+
+    from ..utils.format import log_debug
+
+    compatible: List[Union[ToolName, "ToolConfig"]] = []
+    for tool in tools:
+        name: str = tool if isinstance(tool, str) else tool.type
+        if name in GOOGLE_ONLY_TOOLS:
+            log_debug(
+                f"WARNING: Tool '{name}' is only available with the Google provider. "
+                f"Skipping for provider '{provider}'."
+            )
+        else:
+            compatible.append(tool)
+    return compatible

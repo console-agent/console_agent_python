@@ -191,9 +191,10 @@ class AgentCallOptions(BaseModel):
 class AgentConfig(BaseModel):
     """Global configuration for console-agent."""
 
-    provider: Literal["google"] = "google"
+    provider: Literal["google", "ollama"] = "google"
     api_key: Optional[str] = None
     model: str = "gemini-2.5-flash-lite"
+    ollama_host: str = "http://localhost:11434"
     persona: PersonaName = "general"
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     mode: Literal["fire-and-forget", "blocking"] = "fire-and-forget"

@@ -4,6 +4,7 @@
 - [Getting Started](#getting-started)
 - [How It Works](#how-it-works)
 - [API Reference](#api-reference)
+- [Providers](#providers)
 - [Personas](#personas)
 - [Tools](#tools)
 - [Configuration](#configuration)
@@ -253,6 +254,79 @@ recommendation = result.data.get("recommendation")
 
 ---
 
+## Providers
+
+console-agent supports multiple AI providers. Choose based on your needs:
+
+### Google Gemini (default)
+
+Cloud-hosted models with full tool support. Requires a free API key.
+
+```python
+from console_agent import init
+
+init(
+    provider="google",                    # default
+    api_key="...",                        # or set GEMINI_API_KEY env var
+    model="gemini-2.5-flash-lite",       # default model
+)
+```
+
+**Setup:**
+1. Get a free API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. Set `GEMINI_API_KEY` env var or pass `api_key` to `init()`
+
+**Supports:** ✅ Tools (google_search, code_execution, url_context) · ✅ Thinking mode · ✅ File attachments · ✅ Structured output
+
+### Ollama (Local Models)
+
+Run models locally with [Ollama](https://ollama.com). Free, 100% private, no API key needed.
+
+```bash
+# 1. Install Ollama: https://ollama.com
+# 2. Pull a model
+ollama pull llama3.2
+```
+
+```python
+from console_agent import init
+
+init(
+    provider="ollama",
+    model="llama3.2",                         # any model from `ollama list`
+    ollama_host="http://localhost:11434",      # default Ollama host
+)
+```
+
+**Setup:**
+1. Install Ollama from [ollama.com](https://ollama.com)
+2. Pull a model: `ollama pull llama3.2`
+3. That's it — no API key needed
+
+**Supports:** ✅ All personas · ✅ Structured output · ⚠️ Text-only file attachments
+
+**Not supported:** ❌ Tools (google_search, code_execution, url_context) · ❌ Thinking mode
+
+The Ollama provider auto-defaults to `llama3.2` if the configured model is a Gemini model name. You can use any model available in your Ollama installation (`ollama list`).
+
+The host can also be set via the `OLLAMA_HOST` environment variable.
+
+### Provider Comparison
+
+| | Google Gemini | Ollama |
+|---|---|---|
+| Setup | `GEMINI_API_KEY` env var | Install Ollama + pull model |
+| Config | `provider="google"` | `provider="ollama"` |
+| Models | `gemini-2.5-flash-lite`, etc. | `llama3.2`, any `ollama list` model |
+| Tools | ✅ google_search, code_execution, url_context | ❌ Not supported |
+| Thinking | ✅ Supported | ❌ Not supported |
+| File attachments | ✅ Full support (PDF, images, video) | ⚠️ Text-only |
+| Cost | Pay per token (very cheap) | Free (local) |
+| Privacy | Cloud (with anonymization) | 100% local |
+| Speed | ~200ms (flash-lite) | Depends on hardware |
+
+---
+
 ## Personas
 
 ### Available Personas
@@ -356,9 +430,10 @@ init(local_only=True)
 
 ```python
 class AgentConfig(BaseModel):
-    provider: Literal["google"] = "google"
+    provider: Literal["google", "ollama"] = "google"
     api_key: Optional[str] = None          # Or use GEMINI_API_KEY env
     model: str = "gemini-2.5-flash-lite"
+    ollama_host: str = "http://localhost:11434"  # Ollama host (or OLLAMA_HOST env)
     persona: PersonaName = "general"
     mode: Literal["fire-and-forget", "blocking"] = "fire-and-forget"
     timeout: int = 10000                   # ms
@@ -751,12 +826,14 @@ tests/
 │   ├── test_rate_limit.py
 │   ├── test_budget.py
 │   ├── test_caller_file.py
-│   └── test_agent_config.py
+│   ├── test_agent_config.py
+│   └── test_ollama_provider.py
 ├── integration/           # No API key needed (uses dry_run)
 │   └── test_agent_dryrun.py
-└── e2e/                   # Requires GEMINI_API_KEY
-    ├── test_agent_real.py
-    └── test_caller_source.py
+└── e2e/                   # Requires API keys / running services
+    ├── test_agent_real.py       # Requires GEMINI_API_KEY
+    ├── test_caller_source.py    # Requires GEMINI_API_KEY
+    └── test_ollama_real.py      # Requires running Ollama server
 ```
 
 ---
@@ -771,7 +848,8 @@ console_agent/
 ├── core.py                # Core engine (config, execute_agent, dry run)
 ├── types.py               # All Pydantic models & type definitions
 ├── providers/
-│   └── google.py          # Agno Agent + Gemini integration
+│   ├── google.py          # Agno Agent + Gemini integration
+│   └── ollama.py          # Agno Agent + Ollama integration (local models)
 ├── personas/
 │   ├── __init__.py        # Registry, detection, get_persona()
 │   ├── debugger.py        # 🐛 Debugging expert
@@ -809,6 +887,8 @@ console_agent/
 
 - `agno` — Agent framework (tool loop, structured output)
 - `google-genai` — Google Gemini provider
+- `ollama` — Ollama Python client (local model support)
+- `openai` — Required by Agno's Ollama provider
 - `rich` — Console colors, spinners, formatting
 - `pydantic` — Type definitions, validation
 
@@ -864,6 +944,48 @@ init(dry_run=True)
 # All calls return mock results without hitting the API
 ```
 
+### Ollama: "Connection refused" / "Cannot connect"
+
+Make sure Ollama is running:
+
+```bash
+# Start Ollama
+ollama serve
+
+# Verify it's running
+curl http://localhost:11434/api/tags
+```
+
+If using a custom host, set it in `init()` or via env var:
+
+```python
+init(provider="ollama", ollama_host="http://your-host:11434")
+```
+
+Or:
+
+```bash
+export OLLAMA_HOST=http://your-host:11434
+```
+
+### Ollama: "Model not found"
+
+Pull the model first:
+
+```bash
+ollama pull llama3.2
+```
+
+Check available models:
+
+```bash
+ollama list
+```
+
+### Ollama: Tools not working
+
+Tools (google_search, code_execution, url_context) are **not supported** with the Ollama provider. They are Google/Gemini-specific. If you need tools, use `provider="google"`.
+
 ---
 
 ## Type Exports
@@ -890,12 +1012,26 @@ from console_agent import (
 
 ## Models Reference
 
+### Google Gemini Models
+
 | Model | Best For | Speed | Cost |
 |-------|----------|-------|------|
 | `gemini-2.5-flash-lite` | General purpose, fast | ~200ms | Very low |
 | `gemini-3-flash-preview` | Complex reasoning, thinking mode | ~400ms | Low |
 
 **Default:** `gemini-2.5-flash-lite` — handles 99% of use cases.
+
+### Ollama Models
+
+| Model | Best For | Size |
+|-------|----------|------|
+| `llama3.2` | General purpose (default for Ollama) | ~2GB |
+| `llama3.2:1b` | Lightweight, fast responses | ~1.3GB |
+| `mistral` | Strong reasoning | ~4.1GB |
+| `codellama` | Code-focused tasks | ~3.8GB |
+| `deepseek-coder` | Code generation & review | ~776MB |
+
+Use any model available via `ollama list`. See [ollama.com/library](https://ollama.com/library) for the full model catalog.
 
 ---
 

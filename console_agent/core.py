@@ -13,6 +13,7 @@ from typing import Any, Optional
 
 from .personas import detect_persona, get_persona
 from .providers.google import call_google
+from .providers.ollama import call_ollama
 from .types import (
     AgentCallOptions,
     AgentConfig,
@@ -242,13 +243,19 @@ async def execute_agent(
     try:
         # Execute with timeout (convert ms to seconds)
         timeout_sec = _config.timeout / 1000.0
-        result = await asyncio.wait_for(
-            call_google(
+        # Route to the appropriate provider
+        if _config.provider == "ollama":
+            provider_call = call_ollama(
                 processed_prompt, context_str, persona, _config, options,
                 source_file=source_file, files=files,
-            ),
-            timeout=timeout_sec,
-        )
+            )
+        else:
+            provider_call = call_google(
+                processed_prompt, context_str, persona, _config, options,
+                source_file=source_file, files=files,
+            )
+
+        result = await asyncio.wait_for(provider_call, timeout=timeout_sec)
 
         # Record usage
         _budget_tracker.record_usage(
