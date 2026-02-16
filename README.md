@@ -1,6 +1,10 @@
-# console-agent 🐍
-
+```
+█▀▀ █▀█ █▄ █ █▀ █▀█ █   █▀▀
+█▄▄ █▄█ █ ▀█ ▄█ █▄█ █▄▄ ██▄
+       .agent
+```
 > **`agent("debug this")` — as easy as `print()`**
+
 
 Drop `agent()` anywhere in your Python code to execute agentic AI workflows. Powered by Google Gemini & Ollama via [Agno](https://github.com/agno-agi/agno).
 
